@@ -1,5 +1,6 @@
--- [[ Client-side Toggleable Script for "OG" Rarity with Tabbed UI ]]
--- Fully Mobile & PC Compatible (Custom Dragging & Scrolling)
+-- [[ Client-side Toggleable Script for "OG" Rarity ]]
+-- [[ Kite's OG Visual ]]
+-- [[ Credits to Gemini best ai lmfao ]]
 
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
@@ -21,8 +22,13 @@ local isMasterEnabled = false
 local currentKeybind = Enum.KeyCode.RightShift
 local isBinding = false 
 
+-- The dynamic color palette
+local richGold = Color3.fromRGB(255, 215, 0)
+local darkGold = Color3.fromRGB(130, 100, 0)
+local blackBand = Color3.fromRGB(20, 20, 20)
+
 -- ==========================================
--- 1. CUSTOM DRAG CONTROLLER (For PC & Mobile)
+-- 1. CUSTOM DRAG CONTROLLER
 -- ==========================================
 local function makeDraggable(dragHandle, frameToMove)
     local dragging, dragInput, dragStart, startPos
@@ -65,7 +71,6 @@ ScreenGui.Name = "KitesOGVisualUI"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.Parent = guiParent
 
--- === MAIN FRAME (Half Size) ===
 local MainFrame = Instance.new("Frame")
 MainFrame.Size = UDim2.new(0, 160, 0, 220) 
 MainFrame.Position = UDim2.new(0.8, -20, 0.4, 0)
@@ -77,26 +82,24 @@ local MainCorner = Instance.new("UICorner")
 MainCorner.CornerRadius = UDim.new(0, 8)
 MainCorner.Parent = MainFrame
 
--- Top Bar (This is what you drag)
 local TopBar = Instance.new("Frame")
 TopBar.Size = UDim2.new(1, 0, 0, 25)
 TopBar.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
 TopBar.Parent = MainFrame
-makeDraggable(TopBar, MainFrame) -- Apply custom drag
+makeDraggable(TopBar, MainFrame)
 
 local TopCorner = Instance.new("UICorner")
 TopCorner.CornerRadius = UDim.new(0, 8)
 TopCorner.Parent = TopBar
 
--- The Custom Title
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -25, 1, 0)
 Title.Position = UDim2.new(0, 8, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "Kite's OG Visual" -- Changed from "OG Hub"
+Title.Text = "Kite's OG Visual"
 Title.TextColor3 = Color3.fromRGB(255, 215, 0)
 Title.Font = Enum.Font.GothamBold
-Title.TextSize = 11 -- Dropped it by 1 size just to make sure it fits perfectly
+Title.TextSize = 11 
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = TopBar
 
@@ -110,7 +113,6 @@ MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.TextSize = 14
 MinimizeBtn.Parent = TopBar
 
--- Tab Bar
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, 0, 0, 25)
 TabBar.Position = UDim2.new(0, 0, 0, 25)
@@ -123,14 +125,12 @@ TabListLayout.FillDirection = Enum.FillDirection.Horizontal
 TabListLayout.SortOrder = Enum.SortOrder.LayoutOrder
 TabListLayout.Parent = TabBar
 
--- Content Area
 local ContentArea = Instance.new("Frame")
 ContentArea.Size = UDim2.new(1, 0, 1, -50)
 ContentArea.Position = UDim2.new(0, 0, 0, 50)
 ContentArea.BackgroundTransparency = 1
 ContentArea.Parent = MainFrame
 
--- === MINIMIZED SQUARE ===
 local MinFrame = Instance.new("TextButton")
 MinFrame.Size = UDim2.new(0, 45, 0, 45)
 MinFrame.Position = UDim2.new(0.8, -20, 0.4, 0)
@@ -253,8 +253,39 @@ KeybindCorner.CornerRadius = UDim.new(0, 4)
 KeybindCorner.Parent = KeybindBtn
 
 -- ==========================================
--- 5. LOGIC & FUNCTIONS
+-- 5. SLIMMED DYNAMIC WAVE GENERATOR & LOGIC
 -- ==========================================
+-- If you want it even thinner, look at the values inside the if/else block!
+local function getOGSequence(shift)
+    local keypoints = {}
+    local cycle = 0.85 -- How far apart the waves are.
+    
+    for i = 0, 15 do
+        local x = i / 15
+        local phase = ((x - shift) % cycle) / cycle
+        
+        local c
+        if phase < 0.05 then
+            c = richGold
+        elseif phase < 0.15 then
+            c = richGold:Lerp(darkGold, (phase - 0.05) / 0.10)
+        elseif phase < 0.25 then
+            c = darkGold:Lerp(blackBand, (phase - 0.15) / 0.10)
+        elseif phase < 0.50 then -- **CHANGED FROM 0.70 TO 0.50** - The black band now holds solid for much less time.
+            c = blackBand 
+        elseif phase < 0.60 then -- Adjusted transitions to start sooner
+            c = blackBand:Lerp(darkGold, (phase - 0.50) / 0.10)
+        elseif phase < 0.70 then -- Adjusted transitions to start sooner
+            c = darkGold:Lerp(richGold, (phase - 0.60) / 0.10)
+        else
+            c = richGold
+        end
+        
+        table.insert(keypoints, ColorSequenceKeypoint.new(x, c))
+    end
+    return ColorSequence.new(keypoints)
+end
+
 local function applyOG()
     if not isMasterEnabled then return end
     
@@ -279,21 +310,6 @@ local function applyOG()
                 if not obj:FindFirstChild("OGGradient") then
                     local gradient = Instance.new("UIGradient")
                     gradient.Name = "OGGradient"
-                    local richGold = Color3.fromRGB(255, 215, 0)
-                    local darkGold = Color3.fromRGB(130, 100, 0)     
-                    local blackenedTrail = Color3.fromRGB(60, 45, 0) 
-                    local blackBand = Color3.fromRGB(25, 25, 25)
-                    
-                    gradient.Color = ColorSequence.new{
-                        ColorSequenceKeypoint.new(0, richGold),
-                        ColorSequenceKeypoint.new(0.35, richGold),       
-                        ColorSequenceKeypoint.new(0.40, blackenedTrail), 
-                        ColorSequenceKeypoint.new(0.50, blackBand),      
-                        ColorSequenceKeypoint.new(0.60, blackBand),      
-                        ColorSequenceKeypoint.new(0.62, darkGold),       
-                        ColorSequenceKeypoint.new(0.65, richGold),       
-                        ColorSequenceKeypoint.new(1, richGold)
-                    }
                     gradient.Rotation = 90
                     gradient.Parent = obj
                     table.insert(activeGradients, gradient)
@@ -327,7 +343,7 @@ local function revertAll()
 end
 
 -- ==========================================
--- 6. CONNECTIONS
+-- 6. CONNECTIONS & RENDER LOOP
 -- ==========================================
 local order = {"Common", "Rare", "Epic", "Legendary", "Mythic", "Secret"}
 for _, rarity in ipairs(order) do
@@ -419,19 +435,19 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
--- ==========================================
--- 7. RENDER LOOP
--- ==========================================
 RunService.RenderStepped:Connect(function()
     if not isMasterEnabled then return end
     
-    local timer = (os.clock() * 0.6) % 1 
-    local sweepOffset = (timer * 1.35) - 0.65
+    -- Speed of the continuous flow 
+    local timer = os.clock() * 0.4
+    local shift = timer % 0.85 
+    
+    local newSequence = getOGSequence(shift)
     
     for i = #activeGradients, 1, -1 do
         local grad = activeGradients[i]
         if grad and grad.Parent then
-            grad.Offset = Vector2.new(0, sweepOffset) 
+            grad.Color = newSequence 
         else
             table.remove(activeGradients, i)
         end
