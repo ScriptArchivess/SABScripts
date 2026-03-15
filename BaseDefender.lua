@@ -1,1 +1,1 @@
-println("scrapped :P too hard to maintain")
+print("scrapped :P too hard to maintain")
