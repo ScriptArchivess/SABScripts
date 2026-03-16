@@ -19,10 +19,13 @@ local activeGradients = {}
 local originalStates = {} 
 local isMasterEnabled = false
 
-local currentKeybind = Enum.KeyCode.RightShift
+-- Keybinds and Settings
+local uiKeybind = Enum.KeyCode.LeftControl
+local masterKeybind = Enum.KeyCode.RightControl
+local useMinimizeSquare = true 
 local isBinding = false 
+local bindingTarget = nil 
 
--- The dynamic color palette
 local richGold = Color3.fromRGB(255, 215, 0)
 local darkGold = Color3.fromRGB(130, 100, 0)
 local blackBand = Color3.fromRGB(20, 20, 20)
@@ -62,7 +65,7 @@ local function makeDraggable(dragHandle, frameToMove)
 end
 
 -- ==========================================
--- 2. UI SETUP (Compact & Scrolling)
+-- 2. UI SETUP 
 -- ==========================================
 local guiParent = pcall(function() return game:GetService("CoreGui") end) and game:GetService("CoreGui") or Players.LocalPlayer:WaitForChild("PlayerGui")
 
@@ -149,7 +152,7 @@ MinCorner.CornerRadius = UDim.new(0, 8)
 MinCorner.Parent = MinFrame
 
 -- ==========================================
--- 3. TAB CREATION (Scrolling Frames)
+-- 3. TAB CREATION
 -- ==========================================
 local tabs = {}
 local pages = {}
@@ -222,43 +225,91 @@ local RarityListLayout = Instance.new("UIListLayout")
 RarityListLayout.Padding = UDim.new(0, 4)
 RarityListLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 RarityListLayout.Parent = RaritiesPage
-
 local RarityPadding = Instance.new("UIPadding")
 RarityPadding.PaddingTop = UDim.new(0, 5)
 RarityPadding.PaddingBottom = UDim.new(0, 5)
 RarityPadding.Parent = RaritiesPage
 
--- SETTINGS PAGE
-local KeybindLabel = Instance.new("TextLabel")
-KeybindLabel.Size = UDim2.new(1, 0, 0, 20)
-KeybindLabel.Position = UDim2.new(0, 0, 0, 10)
-KeybindLabel.BackgroundTransparency = 1
-KeybindLabel.Text = "Toggle Keybind:"
-KeybindLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-KeybindLabel.Font = Enum.Font.Gotham
-KeybindLabel.TextSize = 12
-KeybindLabel.Parent = SettingsPage
+-- SETTINGS PAGE (Fixed Layout Order)
+local SettingsLayout = Instance.new("UIListLayout")
+SettingsLayout.Padding = UDim.new(0, 5)
+SettingsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+SettingsLayout.SortOrder = Enum.SortOrder.LayoutOrder -- Forces number order!
+SettingsLayout.Parent = SettingsPage
 
-local KeybindBtn = Instance.new("TextButton")
-KeybindBtn.Size = UDim2.new(1, -20, 0, 30)
-KeybindBtn.Position = UDim2.new(0, 10, 0, 30)
-KeybindBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
-KeybindBtn.Text = currentKeybind.Name
-KeybindBtn.TextColor3 = Color3.fromRGB(255, 215, 0)
-KeybindBtn.Font = Enum.Font.GothamBold
-KeybindBtn.TextSize = 12
-KeybindBtn.Parent = SettingsPage
-local KeybindCorner = Instance.new("UICorner")
-KeybindCorner.CornerRadius = UDim.new(0, 4)
-KeybindCorner.Parent = KeybindBtn
+local SettingsPadding = Instance.new("UIPadding")
+SettingsPadding.PaddingTop = UDim.new(0, 5)
+SettingsPadding.PaddingBottom = UDim.new(0, 5)
+SettingsPadding.Parent = SettingsPage
+
+-- Show/Hide UI Toggle
+local UIKeyLabel = Instance.new("TextLabel")
+UIKeyLabel.LayoutOrder = 1
+UIKeyLabel.Size = UDim2.new(1, -20, 0, 15)
+UIKeyLabel.BackgroundTransparency = 1
+UIKeyLabel.Text = "Show/Hide UI:"
+UIKeyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+UIKeyLabel.Font = Enum.Font.Gotham
+UIKeyLabel.TextSize = 11
+UIKeyLabel.Parent = SettingsPage
+
+local UIKeyBtn = Instance.new("TextButton")
+UIKeyBtn.LayoutOrder = 2
+UIKeyBtn.Size = UDim2.new(1, -20, 0, 22)
+UIKeyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+UIKeyBtn.Text = uiKeybind.Name
+UIKeyBtn.TextColor3 = Color3.fromRGB(255, 215, 0)
+UIKeyBtn.Font = Enum.Font.GothamBold
+UIKeyBtn.TextSize = 11
+UIKeyBtn.Parent = SettingsPage
+local UIKeyCorner = Instance.new("UICorner")
+UIKeyCorner.CornerRadius = UDim.new(0, 4)
+UIKeyCorner.Parent = UIKeyBtn
+
+-- Master Script Toggle
+local MasterKeyLabel = Instance.new("TextLabel")
+MasterKeyLabel.LayoutOrder = 3
+MasterKeyLabel.Size = UDim2.new(1, -20, 0, 15)
+MasterKeyLabel.BackgroundTransparency = 1
+MasterKeyLabel.Text = "Start/Stop Script:"
+MasterKeyLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+MasterKeyLabel.Font = Enum.Font.Gotham
+MasterKeyLabel.TextSize = 11
+MasterKeyLabel.Parent = SettingsPage
+
+local MasterKeyBtn = Instance.new("TextButton")
+MasterKeyBtn.LayoutOrder = 4
+MasterKeyBtn.Size = UDim2.new(1, -20, 0, 22)
+MasterKeyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+MasterKeyBtn.Text = masterKeybind.Name
+MasterKeyBtn.TextColor3 = Color3.fromRGB(255, 215, 0)
+MasterKeyBtn.Font = Enum.Font.GothamBold
+MasterKeyBtn.TextSize = 11
+MasterKeyBtn.Parent = SettingsPage
+local MasterKeyCorner = Instance.new("UICorner")
+MasterKeyCorner.CornerRadius = UDim.new(0, 4)
+MasterKeyCorner.Parent = MasterKeyBtn
+
+-- Minimize Square Toggle
+local MinSquareBtn = Instance.new("TextButton")
+MinSquareBtn.LayoutOrder = 5
+MinSquareBtn.Size = UDim2.new(1, -20, 0, 26)
+MinSquareBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+MinSquareBtn.Text = "Min. Square: ON"
+MinSquareBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinSquareBtn.Font = Enum.Font.GothamSemibold
+MinSquareBtn.TextSize = 11
+MinSquareBtn.Parent = SettingsPage
+local MinSquareCorner = Instance.new("UICorner")
+MinSquareCorner.CornerRadius = UDim.new(0, 4)
+MinSquareCorner.Parent = MinSquareBtn
 
 -- ==========================================
 -- 5. SLIMMED DYNAMIC WAVE GENERATOR & LOGIC
 -- ==========================================
--- If you want it even thinner, look at the values inside the if/else block!
 local function getOGSequence(shift)
     local keypoints = {}
-    local cycle = 0.85 -- How far apart the waves are.
+    local cycle = 0.85 
     
     for i = 0, 15 do
         local x = i / 15
@@ -271,11 +322,11 @@ local function getOGSequence(shift)
             c = richGold:Lerp(darkGold, (phase - 0.05) / 0.10)
         elseif phase < 0.25 then
             c = darkGold:Lerp(blackBand, (phase - 0.15) / 0.10)
-        elseif phase < 0.50 then -- **CHANGED FROM 0.70 TO 0.50** - The black band now holds solid for much less time.
+        elseif phase < 0.50 then 
             c = blackBand 
-        elseif phase < 0.60 then -- Adjusted transitions to start sooner
+        elseif phase < 0.60 then 
             c = blackBand:Lerp(darkGold, (phase - 0.50) / 0.10)
-        elseif phase < 0.70 then -- Adjusted transitions to start sooner
+        elseif phase < 0.70 then 
             c = darkGold:Lerp(richGold, (phase - 0.60) / 0.10)
         else
             c = richGold
@@ -343,8 +394,38 @@ local function revertAll()
 end
 
 -- ==========================================
--- 6. CONNECTIONS & RENDER LOOP
+-- 6. CONNECTIONS & UI LOGIC
 -- ==========================================
+local function toggleMaster()
+    isMasterEnabled = not isMasterEnabled
+    if isMasterEnabled then
+        MasterBtn.Text = "MASTER: ON"
+        MasterBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        applyOG()
+    else
+        MasterBtn.Text = "MASTER: OFF"
+        MasterBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        revertAll()
+    end
+end
+
+local function toggleMinimize()
+    if useMinimizeSquare then
+        if MainFrame.Visible then
+            MainFrame.Visible = false
+            MinFrame.Visible = true
+            MinFrame.Position = MainFrame.Position
+        else
+            MainFrame.Visible = true
+            MinFrame.Visible = false
+            MainFrame.Position = MinFrame.Position
+        end
+    else
+        MainFrame.Visible = not MainFrame.Visible
+        MinFrame.Visible = false 
+    end
+end
+
 local order = {"Common", "Rare", "Epic", "Legendary", "Mythic", "Secret"}
 for _, rarity in ipairs(order) do
     local btn = Instance.new("TextButton")
@@ -374,18 +455,8 @@ for _, rarity in ipairs(order) do
     end)
 end
 
-MasterBtn.MouseButton1Click:Connect(function()
-    isMasterEnabled = not isMasterEnabled
-    if isMasterEnabled then
-        MasterBtn.Text = "MASTER: ON"
-        MasterBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
-        applyOG()
-    else
-        MasterBtn.Text = "MASTER: OFF"
-        MasterBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-        revertAll()
-    end
-end)
+MasterBtn.MouseButton1Click:Connect(toggleMaster)
+MinimizeBtn.MouseButton1Click:Connect(toggleMinimize)
 
 local dragStartClickPos
 MinFrame.InputBegan:Connect(function(input)
@@ -397,48 +468,66 @@ end)
 MinFrame.InputEnded:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         if (input.Position - dragStartClickPos).Magnitude < 10 then
-            MainFrame.Visible = true
-            MinFrame.Visible = false
-            MainFrame.Position = MinFrame.Position
+            toggleMinimize()
         end
     end
 end)
 
-MinimizeBtn.MouseButton1Click:Connect(function()
-    MainFrame.Visible = false
-    MinFrame.Visible = true
-    MinFrame.Position = MainFrame.Position
+MinSquareBtn.MouseButton1Click:Connect(function()
+    useMinimizeSquare = not useMinimizeSquare
+    if useMinimizeSquare then
+        MinSquareBtn.BackgroundColor3 = Color3.fromRGB(50, 200, 50)
+        MinSquareBtn.Text = "Min. Square: ON"
+    else
+        MinSquareBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+        MinSquareBtn.Text = "Min. Square: OFF"
+        if MinFrame.Visible then MinFrame.Visible = false end
+    end
 end)
 
-KeybindBtn.MouseButton1Click:Connect(function()
+UIKeyBtn.MouseButton1Click:Connect(function()
     isBinding = true
-    KeybindBtn.Text = "... Press Key ..."
-    KeybindBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+    bindingTarget = "UI"
+    UIKeyBtn.Text = "..."
+    UIKeyBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+end)
+
+MasterKeyBtn.MouseButton1Click:Connect(function()
+    isBinding = true
+    bindingTarget = "Master"
+    MasterKeyBtn.Text = "..."
+    MasterKeyBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if isBinding and input.UserInputType == Enum.UserInputType.Keyboard then
-        currentKeybind = input.KeyCode
-        KeybindBtn.Text = currentKeybind.Name
-        KeybindBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        if bindingTarget == "UI" then
+            uiKeybind = input.KeyCode
+            UIKeyBtn.Text = uiKeybind.Name
+            UIKeyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        elseif bindingTarget == "Master" then
+            masterKeybind = input.KeyCode
+            MasterKeyBtn.Text = masterKeybind.Name
+            MasterKeyBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+        end
         isBinding = false
-    elseif not gameProcessed and input.KeyCode == currentKeybind and not isBinding then
-        if MainFrame.Visible then
-            MainFrame.Visible = false
-            MinFrame.Visible = true
-            MinFrame.Position = MainFrame.Position
-        else
-            MainFrame.Visible = true
-            MinFrame.Visible = false
-            MainFrame.Position = MinFrame.Position
+        bindingTarget = nil
+        
+    elseif not gameProcessed and not isBinding then
+        if input.KeyCode == uiKeybind then
+            toggleMinimize()
+        elseif input.KeyCode == masterKeybind then
+            toggleMaster()
         end
     end
 end)
 
+-- ==========================================
+-- 7. RENDER LOOP
+-- ==========================================
 RunService.RenderStepped:Connect(function()
     if not isMasterEnabled then return end
     
-    -- Speed of the continuous flow 
     local timer = os.clock() * 0.4
     local shift = timer % 0.85 
     
