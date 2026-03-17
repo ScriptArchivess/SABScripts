@@ -7,12 +7,20 @@ local LocalPlayer = Players.LocalPlayer
 -- ==========================================
 -- 🖼️ CUSTOM ASSET DOWNLOADER (No Studio Needed!)
 -- ==========================================
+local FOLDER_NAME = "APVisual"
+pcall(function()
+    if not isfolder or not makefolder then return end
+    if not isfolder(FOLDER_NAME) then
+        makefolder(FOLDER_NAME)
+    end
+end)
+
 local imageURL = "https://tr.rbxcdn.com/180DAY-e03fae3ffce52f4432de392082fa43b7/420/420/Image/Png/noFilter"
 local ITEM_IMAGE_ID = ""
 local ROBUX_ICON_ID = "rbxasset://textures/ui/common/robux_small.png"
 
 local successCustomAsset, result = pcall(function()
-    local fileName = "admin_commands_icon.png"
+    local fileName = FOLDER_NAME .. "/admin_commands_icon.png"
     if isfile and writefile and not isfile(fileName) then
         local imageData = game:HttpGetAsync(imageURL)
         writefile(fileName, imageData)
@@ -41,11 +49,40 @@ end
 -- ==========================================
 -- SCRIPT STATE & VARIABLES
 -- ==========================================
-local scriptEnabled = true
-local currentBalance = 5641388
-local hookedButtons = {}
-local toggleKeybind = Enum.KeyCode.RightControl -- Default keybind to show/hide panel
-local isListeningForKey = false                 -- Settings: waiting for new key press
+local SETTINGS_FILE = "APVisual/ap_settings.txt"
+
+-- Settings: balance | keybind name | startMinimized (1/0)
+local function saveSettings(balance, keybind, minimized)
+    pcall(function()
+        if writefile then
+            local keyName = tostring(keybind):gsub("Enum.KeyCode.", "")
+            writefile(SETTINGS_FILE, tostring(balance) .. "|" .. keyName .. "|" .. (minimized and "1" or "0"))
+        end
+    end)
+end
+
+local function loadSettings()
+    local balance    = 5641388
+    local keybind    = Enum.KeyCode.RightControl
+    local minimized  = false
+    pcall(function()
+        if isfile and readfile and isfile(SETTINGS_FILE) then
+            local parts = readfile(SETTINGS_FILE):split("|")
+            if parts[1] then local n = tonumber(parts[1]); if n then balance = n end end
+            if parts[2] then
+                local ok, kc = pcall(function() return Enum.KeyCode[parts[2]] end)
+                if ok and kc then keybind = kc end
+            end
+            if parts[3] then minimized = (parts[3] == "1") end
+        end
+    end)
+    return balance, keybind, minimized
+end
+
+local scriptEnabled   = true
+local currentBalance, toggleKeybind, startMinimized = loadSettings()
+local hookedButtons   = {}
+local isListeningForKey = false
 
 -- Helper function to format numbers with commas
 local function FormatNumber(n)
@@ -55,17 +92,32 @@ local function FormatNumber(n)
 end
 
 -- Function to dynamically find the user being gifted
+-- Only returns a username if a "GIFTING" label and "@username" label share the same parent frame
+-- Uses the exact known GUI path:
+-- PlayerGui > [any ScreenGui] > Shop > GiftPlayerSelect > PlayerSelected > PlayerName
 local function getGiftTargetUser()
-    for _, element in pairs(LocalPlayer:WaitForChild("PlayerGui"):GetDescendants()) do
-        if (element:IsA("TextLabel") or element:IsA("TextBox")) and element.Visible then
-            local text = element.Text
-            local foundUser = text:match("@[%w_]+")
-            if foundUser then
-                return foundUser
+    local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+    for _, screenGui in pairs(playerGui:GetChildren()) do
+        local shopFrame = screenGui:FindFirstChild("Shop")
+        if shopFrame then
+            local giftSelect = shopFrame:FindFirstChild("GiftPlayerSelect")
+            if giftSelect and giftSelect.Visible then
+                local playerSelected = giftSelect:FindFirstChild("PlayerSelected")
+                if playerSelected and playerSelected.Visible then
+                    local playerNameLabel = playerSelected:FindFirstChild("PlayerName")
+                    if playerNameLabel then
+                        local name = playerNameLabel.Text:match("@[%w_]+")
+                        if name then
+                            return name
+                        end
+                    end
+                end
             end
         end
     end
-    return "a player"
+
+    return nil -- not gifting
 end
 
 -- ==========================================
@@ -78,7 +130,7 @@ controlGui.Parent = targetParent
 
 local controlFrame = Instance.new("Frame")
 controlFrame.Name = "ControlFrame"
-controlFrame.Size = UDim2.new(0, 200, 0, 150) -- Taller to fit settings button
+controlFrame.Size = UDim2.new(0, 200, 0, 190) -- taller to fit minimized toggle
 controlFrame.Position = UDim2.new(0, 20, 0, 20)
 controlFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
 controlFrame.BorderSizePixel = 0
@@ -156,6 +208,20 @@ settingsBtn.Parent = controlFrame
 local settingsCorner = Instance.new("UICorner")
 settingsCorner.CornerRadius = UDim.new(0, 6)
 settingsCorner.Parent = settingsBtn
+
+local minimizeToggleBtn = Instance.new("TextButton")
+minimizeToggleBtn.Size = UDim2.new(1, -20, 0, 30)
+minimizeToggleBtn.Position = UDim2.new(0, 10, 0, 150)
+minimizeToggleBtn.BackgroundColor3 = startMinimized and Color3.fromRGB(0, 110, 255) or Color3.fromRGB(55, 55, 55)
+minimizeToggleBtn.Text = "Start Minimized: " .. (startMinimized and "YES" or "NO")
+minimizeToggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+minimizeToggleBtn.Font = Enum.Font.Gotham
+minimizeToggleBtn.TextSize = 12
+minimizeToggleBtn.Parent = controlFrame
+
+local minimizeToggleCorner = Instance.new("UICorner")
+minimizeToggleCorner.CornerRadius = UDim.new(0, 6)
+minimizeToggleCorner.Parent = minimizeToggleBtn
 
 -- ==========================================
 -- SETTINGS UI
@@ -319,6 +385,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         keybindBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
         keybindStroke.Color = Color3.fromRGB(70, 70, 70)
         keybindHint.Text = "Keybind saved!"
+        saveSettings(currentBalance, toggleKeybind, startMinimized)
 
         -- Reset hint text after 2 seconds
         task.delay(2, function()
@@ -329,11 +396,21 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     end
 end)
 
+-- Apply saved minimized preference on startup
+controlFrame.Visible = not startMinimized
+
 -- ==========================================
 -- CONTROL PANEL LOGIC
 -- ==========================================
 hideBtn.MouseButton1Click:Connect(function()
     controlFrame.Visible = false
+end)
+
+minimizeToggleBtn.MouseButton1Click:Connect(function()
+    startMinimized = not startMinimized
+    minimizeToggleBtn.Text = "Start Minimized: " .. (startMinimized and "YES" or "NO")
+    minimizeToggleBtn.BackgroundColor3 = startMinimized and Color3.fromRGB(0, 110, 255) or Color3.fromRGB(55, 55, 55)
+    saveSettings(currentBalance, toggleKeybind, startMinimized)
 end)
 
 -- Legacy chat command still works too
@@ -363,6 +440,7 @@ balanceInput.FocusLost:Connect(function()
     local num = tonumber(balanceInput.Text)
     if num then
         currentBalance = num
+        saveSettings(currentBalance, toggleKeybind, startMinimized)
     else
         balanceInput.Text = tostring(currentBalance)
     end
@@ -371,7 +449,186 @@ end)
 -- ==========================================
 -- FUNCTION TO CREATE AND SHOW YOUR CUSTOM UI
 -- ==========================================
+
+-- Shared style constants matching Roblox native purchase dialog
+local BG        = Color3.fromRGB(22, 22, 26)
+local BG_ROW    = Color3.fromRGB(30, 30, 35)
+local BLUE      = Color3.fromRGB(58, 120, 255)
+local BLUE_DARK = Color3.fromRGB(30, 60, 160)
+local W, H      = 460, 300   -- buy/low-balance dialog size
+local SW, SH    = 460, 240   -- success dialog size
+
+local function makeFrame(parent, w, h, zindex)
+    local f = Instance.new("Frame")
+    f.Size = UDim2.new(0, 0, 0, 0)
+    f.Position = UDim2.new(0.5, 0, 0.5, 0)
+    f.AnchorPoint = Vector2.new(0.5, 0.5)
+    f.BackgroundColor3 = BG
+    f.ClipsDescendants = true
+    f.ZIndex = zindex or 2
+    f.Parent = parent
+    local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 16); c.Parent = f
+    return f
+end
+
+local function makeLabel(parent, text, size, pos, textsize, font, color, align, zindex)
+    local l = Instance.new("TextLabel")
+    l.Size = size; l.Position = pos
+    l.BackgroundTransparency = 1
+    l.Text = text
+    l.TextColor3 = color or Color3.fromRGB(255,255,255)
+    l.TextSize = textsize or 14
+    l.Font = font or Enum.Font.Gotham
+    l.TextXAlignment = align or Enum.TextXAlignment.Left
+    l.ZIndex = zindex or 2
+    l.Parent = parent
+    return l
+end
+
+local function makeCloseBtn(parent, zindex)
+    local z = zindex or 2
+
+    -- Circular background for hover/click feedback
+    local bg = Instance.new("Frame")
+    bg.Size = UDim2.new(0, 28, 0, 28)
+    bg.Position = UDim2.new(1, -38, 0, 14)
+    bg.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    bg.BackgroundTransparency = 1
+    bg.ZIndex = z
+    bg.Parent = parent
+    local bgC = Instance.new("UICorner"); bgC.CornerRadius = UDim.new(0, 6); bgC.Parent = bg
+
+    local b = Instance.new("TextButton")
+    b.Size = UDim2.new(1, 0, 1, 0)
+    b.Position = UDim2.new(0, 0, 0, 0)
+    b.BackgroundTransparency = 1
+    b.Text = "X"
+    b.TextColor3 = Color3.fromRGB(180, 180, 180)
+    b.TextSize = 16
+    b.Font = Enum.Font.GothamBold
+    b.ZIndex = z + 1
+    b.Parent = bg
+
+    -- Hover: show faint white circle
+    b.MouseEnter:Connect(function()
+        bg.BackgroundTransparency = 0.8
+        b.TextColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+    b.MouseLeave:Connect(function()
+        bg.BackgroundTransparency = 1
+        b.TextColor3 = Color3.fromRGB(180, 180, 180)
+    end)
+    -- Click: darken circle
+    b.MouseButton1Down:Connect(function()
+        bg.BackgroundTransparency = 0.6
+    end)
+    b.MouseButton1Up:Connect(function()
+        bg.BackgroundTransparency = 0.8
+    end)
+
+    return b
+end
+
+local function makeBalanceRow(parent, balance, zindex)
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(0, 180, 0, 20)
+    container.Position = UDim2.new(1, -46, 0, 20)
+    container.AnchorPoint = Vector2.new(1, 0)
+    container.ZIndex = zindex or 2
+    container.Parent = parent
+
+    local ll = Instance.new("UIListLayout")
+    ll.FillDirection = Enum.FillDirection.Horizontal
+    ll.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    ll.VerticalAlignment = Enum.VerticalAlignment.Center
+    ll.Padding = UDim.new(0, 5)
+    ll.Parent = container
+
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.new(0, 16, 0, 16)
+    icon.BackgroundTransparency = 1
+    icon.Image = ROBUX_ICON_ID
+    icon.ImageColor3 = Color3.fromRGB(200,200,200)
+    icon.LayoutOrder = 1; icon.ZIndex = zindex or 2; icon.Parent = container
+
+    local txt = Instance.new("TextLabel")
+    txt.Size = UDim2.new(0, 0, 1, 0)
+    txt.AutomaticSize = Enum.AutomaticSize.X
+    txt.BackgroundTransparency = 1
+    txt.Text = FormatNumber(balance)
+    txt.TextColor3 = Color3.fromRGB(200,200,200)
+    txt.TextSize = 14; txt.Font = Enum.Font.Gotham
+    txt.LayoutOrder = 2; txt.ZIndex = zindex or 2; txt.Parent = container
+end
+
+local function makeItemRow(parent, yPos, zindex, itemName)
+    -- Icon (no background)
+    local icon = Instance.new("ImageLabel")
+    icon.Size = UDim2.new(0, 64, 0, 64)
+    icon.Position = UDim2.new(0, 24, 0, yPos)
+    icon.BackgroundTransparency = 1
+    icon.Image = ITEM_IMAGE_ID
+    icon.ScaleType = Enum.ScaleType.Fit
+    icon.ZIndex = zindex or 2; icon.Parent = parent
+
+    -- Name
+    makeLabel(parent, itemName or "[GIFT] Admin Commands",
+        UDim2.new(1, -110, 0, 22), UDim2.new(0, 104, 0, yPos + 8),
+        16, Enum.Font.GothamBold, Color3.fromRGB(255,255,255),
+        Enum.TextXAlignment.Left, zindex)
+
+    -- Price row
+    local pIcon = Instance.new("ImageLabel")
+    pIcon.Size = UDim2.new(0, 15, 0, 15)
+    pIcon.Position = UDim2.new(0, 104, 0, yPos + 36)
+    pIcon.BackgroundTransparency = 1
+    pIcon.Image = ROBUX_ICON_ID
+    pIcon.ZIndex = zindex or 2; pIcon.Parent = parent
+
+    makeLabel(parent, "7,499",
+        UDim2.new(0, 80, 0, 18), UDim2.new(0, 124, 0, yPos + 33),
+        14, Enum.Font.Gotham, Color3.fromRGB(180,180,180),
+        Enum.TextXAlignment.Left, zindex)
+end
+
+local function makeBuyButton(parent, yPos, zindex)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -48, 0, 50)
+    btn.Position = UDim2.new(0, 24, 0, yPos)
+    btn.BackgroundColor3 = BLUE_DARK
+    btn.Text = ""; btn.ZIndex = zindex or 2; btn.Parent = parent
+    local bc = Instance.new("UICorner"); bc.CornerRadius = UDim.new(0,12); bc.Parent = btn
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new(0, 0, 1, 0)
+    fill.BackgroundColor3 = BLUE
+    fill.BorderSizePixel = 0; fill.ZIndex = (zindex or 2)
+    fill.Parent = btn
+    local fc = Instance.new("UICorner"); fc.CornerRadius = UDim.new(0,12); fc.Parent = fill
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "Buy"
+    label.TextColor3 = Color3.fromRGB(160,160,160)
+    label.TextSize = 18; label.Font = Enum.Font.GothamBold
+    label.ZIndex = (zindex or 2) + 1; label.Parent = btn
+
+    return btn, fill, label
+end
+
 local function triggerCustomStartUI(targetUser)
+    -- Determine gifting context
+    local isGifting = (targetUser ~= nil)
+    local itemName    = isGifting and "[GIFT] Admin Commands" or "Admin Commands"
+    local successDesc = isGifting
+        and "You have successfully bought [GIFT] Admin Commands."
+        or  "You have successfully bought Admin Commands."
+    local notifText   = isGifting
+        and ("You gifted Admin Commands to " .. tostring(targetUser) .. "!")
+        or  "Successfully bought Admin Commands!"
+
     if targetParent:FindFirstChild("CustomPurchaseUI") then
         targetParent.CustomPurchaseUI:Destroy()
     end
@@ -380,6 +637,7 @@ local function triggerCustomStartUI(targetUser)
     screenGui.Name = "CustomPurchaseUI"
     screenGui.ResetOnSpawn = false
     screenGui.IgnoreGuiInset = true
+    screenGui.DisplayOrder = 999 -- Renders above all Roblox core UI
     screenGui.Parent = targetParent
 
     local overlay = Instance.new("TextButton")
@@ -391,262 +649,165 @@ local function triggerCustomStartUI(targetUser)
     overlay.ZIndex = 1
     overlay.Parent = screenGui
 
-    local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 0, 0, 0)
-    mainFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    mainFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    mainFrame.ClipsDescendants = true
-    mainFrame.ZIndex = 2
-    mainFrame.Parent = screenGui
+    -- ==========================================
+    -- LOW BALANCE BRANCH
+    -- ==========================================
+    if currentBalance < 7499 then
+        local lowFrame = makeFrame(screenGui, W, H, 2)
 
-    local mainCorner = Instance.new("UICorner")
-    mainCorner.CornerRadius = UDim.new(0, 12)
-    mainCorner.Parent = mainFrame
+        makeLabel(lowFrame, "Buy Robux and item",
+            UDim2.new(0, 260, 0, 26), UDim2.new(0, 24, 0, 18),
+            18, Enum.Font.GothamBold, Color3.fromRGB(255,255,255),
+            Enum.TextXAlignment.Left, 2)
 
-    local titleLabel = Instance.new("TextLabel")
-    titleLabel.Size = UDim2.new(0, 150, 0, 20)
-    titleLabel.Position = UDim2.new(0, 20, 0, 15)
-    titleLabel.BackgroundTransparency = 1
-    titleLabel.Text = "Buy item"
-    titleLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    titleLabel.TextSize = 16
-    titleLabel.Font = Enum.Font.GothamBold
-    titleLabel.TextXAlignment = Enum.TextXAlignment.Left
-    titleLabel.ZIndex = 2
-    titleLabel.Parent = mainFrame
+        local lowClose = makeCloseBtn(lowFrame, 2)
+        makeBalanceRow(lowFrame, currentBalance, 2)
+        makeItemRow(lowFrame, 58, 2, itemName)
 
-    local mainCloseButton = Instance.new("TextButton")
-    mainCloseButton.Size = UDim2.new(0, 20, 0, 20)
-    mainCloseButton.Position = UDim2.new(1, -30, 0, 15)
-    mainCloseButton.BackgroundTransparency = 1
-    mainCloseButton.Text = "X"
-    mainCloseButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-    mainCloseButton.TextSize = 16
-    mainCloseButton.Font = Enum.Font.GothamBold
-    mainCloseButton.ZIndex = 2
-    mainCloseButton.Parent = mainFrame
 
-    -- DYNAMIC BALANCE DISPLAY
-    local balanceContainer = Instance.new("Frame")
-    balanceContainer.BackgroundTransparency = 1
-    balanceContainer.Size = UDim2.new(0, 200, 0, 20)
-    balanceContainer.Position = UDim2.new(1, -35, 0, 15)
-    balanceContainer.AnchorPoint = Vector2.new(1, 0)
-    balanceContainer.ZIndex = 2
-    balanceContainer.Parent = mainFrame
+        -- Package row
+        local pkgBox = Instance.new("Frame")
+        pkgBox.Size = UDim2.new(1, -48, 0, 52)
+        pkgBox.Position = UDim2.new(0, 24, 0, 150)
+        pkgBox.BackgroundColor3 = BG_ROW
+        pkgBox.ZIndex = 2; pkgBox.Parent = lowFrame
+        local pkgC = Instance.new("UICorner"); pkgC.CornerRadius = UDim.new(0,10); pkgC.Parent = pkgBox
+        local pkgS = Instance.new("UIStroke"); pkgS.Color = Color3.fromRGB(90,90,100); pkgS.Thickness = 1.5; pkgS.Parent = pkgBox
 
-    local listLayout = Instance.new("UIListLayout")
-    listLayout.FillDirection = Enum.FillDirection.Horizontal
-    listLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-    listLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    listLayout.Padding = UDim.new(0, 4)
-    listLayout.Parent = balanceContainer
+        local pkgIcon = Instance.new("ImageLabel")
+        pkgIcon.Size = UDim2.new(0, 18, 0, 18)
+        pkgIcon.Position = UDim2.new(0, 14, 0.5, -9)
+        pkgIcon.BackgroundTransparency = 1; pkgIcon.Image = ROBUX_ICON_ID
+        pkgIcon.ZIndex = 3; pkgIcon.Parent = pkgBox
 
-    local balanceIcon = Instance.new("ImageLabel")
-    balanceIcon.Size = UDim2.new(0, 14, 0, 14)
-    balanceIcon.BackgroundTransparency = 1
-    balanceIcon.Image = ROBUX_ICON_ID
-    balanceIcon.ImageColor3 = Color3.fromRGB(200, 200, 200)
-    balanceIcon.LayoutOrder = 1
-    balanceIcon.ZIndex = 2
-    balanceIcon.Parent = balanceContainer
+        makeLabel(pkgBox, "10,000",
+            UDim2.new(0, 120, 1, 0), UDim2.new(0, 38, 0, 0),
+            15, Enum.Font.GothamBold, Color3.fromRGB(255,255,255),
+            Enum.TextXAlignment.Left, 3)
 
-    local balanceTextLabel = Instance.new("TextLabel")
-    balanceTextLabel.Size = UDim2.new(0, 0, 1, 0)
-    balanceTextLabel.AutomaticSize = Enum.AutomaticSize.X
-    balanceTextLabel.BackgroundTransparency = 1
-    balanceTextLabel.Text = FormatNumber(currentBalance)
-    balanceTextLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-    balanceTextLabel.TextSize = 14
-    balanceTextLabel.Font = Enum.Font.Gotham
-    balanceTextLabel.LayoutOrder = 2
-    balanceTextLabel.ZIndex = 2
-    balanceTextLabel.Parent = balanceContainer
+        makeLabel(pkgBox, "$139.99",
+            UDim2.new(0, 90, 1, 0), UDim2.new(1, -98, 0, 0),
+            15, Enum.Font.Gotham, Color3.fromRGB(200,200,200),
+            Enum.TextXAlignment.Right, 3)
 
-    -- Item icon & labels
-    local itemIcon = Instance.new("ImageLabel")
-    itemIcon.Size = UDim2.new(0, 60, 0, 60)
-    itemIcon.Position = UDim2.new(0, 20, 0, 55)
-    itemIcon.BackgroundTransparency = 1
-    itemIcon.Image = ITEM_IMAGE_ID
-    itemIcon.ScaleType = Enum.ScaleType.Fit
-    itemIcon.ZIndex = 2
-    itemIcon.Parent = mainFrame
+        local lowBtn, lowFill, lowText = makeBuyButton(lowFrame, 216, 2)
 
-    local itemLabel = Instance.new("TextLabel")
-    itemLabel.Size = UDim2.new(1, -110, 0, 20)
-    itemLabel.Position = UDim2.new(0, 95, 0, 60)
-    itemLabel.BackgroundTransparency = 1
-    itemLabel.Text = "[GIFT] Admin Commands"
-    itemLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    itemLabel.TextSize = 16
-    itemLabel.Font = Enum.Font.GothamBold
-    itemLabel.TextXAlignment = Enum.TextXAlignment.Left
-    itemLabel.ZIndex = 2
-    itemLabel.Parent = mainFrame
+        -- Fine print
+        makeLabel(lowFrame, "Your payment method will be charged. Roblox Terms of Use apply.",
+            UDim2.new(1, -48, 0, 28), UDim2.new(0, 24, 0, 272),
+            11, Enum.Font.Gotham, Color3.fromRGB(120,120,130),
+            Enum.TextXAlignment.Center, 2).TextWrapped = true
 
-    local priceIcon = Instance.new("ImageLabel")
-    priceIcon.Size = UDim2.new(0, 14, 0, 14)
-    priceIcon.Position = UDim2.new(0, 95, 0, 88)
-    priceIcon.BackgroundTransparency = 1
-    priceIcon.Image = ROBUX_ICON_ID
-    priceIcon.ZIndex = 2
-    priceIcon.Parent = mainFrame
+        -- Pop in
+        local popInfo = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+        TweenService:Create(lowFrame, popInfo, {Size = UDim2.new(0, W, 0, H)}):Play()
 
-    local priceText = Instance.new("TextLabel")
-    priceText.Size = UDim2.new(0, 100, 0, 20)
-    priceText.Position = UDim2.new(0, 115, 0, 85)
-    priceText.BackgroundTransparency = 1
-    priceText.Text = "7,499"
-    priceText.TextColor3 = Color3.fromRGB(255, 255, 255)
-    priceText.TextSize = 14
-    priceText.Font = Enum.Font.Gotham
-    priceText.TextXAlignment = Enum.TextXAlignment.Left
-    priceText.ZIndex = 2
-    priceText.Parent = mainFrame
+        -- Loading bar + click
+        local lowClickable = false
+        local lowFillTween = TweenService:Create(lowFill, TweenInfo.new(2, Enum.EasingStyle.Linear), {Size = UDim2.new(1, 0, 1, 0)})
+        lowFillTween.Completed:Connect(function()
+            lowClickable = true
+            lowText.TextColor3 = Color3.fromRGB(255, 255, 255)
+        end)
+        task.wait(0.5)
+        lowFillTween:Play()
+
+        lowBtn.MouseButton1Click:Connect(function()
+            if not lowClickable then return end
+            lowClickable = false
+            lowFill.Visible = false
+            lowText.TextColor3 = Color3.fromRGB(255, 255, 255)
+            task.wait(0.75)
+            screenGui:Destroy()
+        end)
+
+        lowClose.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+        overlay.MouseButton1Click:Connect(function() screenGui:Destroy() end)
+        return
+    end
+
+    -- ==========================================
+    -- NORMAL BALANCE BRANCH
+    -- ==========================================
+    local mainFrame = makeFrame(screenGui, W, H, 2)
+
+    makeLabel(mainFrame, "Buy item",
+        UDim2.new(0, 200, 0, 26), UDim2.new(0, 24, 0, 18),
+        18, Enum.Font.GothamBold, Color3.fromRGB(255,255,255),
+        Enum.TextXAlignment.Left, 2)
+
+    local mainCloseButton = makeCloseBtn(mainFrame, 2)
+    makeBalanceRow(mainFrame, currentBalance, 2)
+    makeItemRow(mainFrame, 58, 2, itemName)
+
 
     -- Buy button
-    local startButton = Instance.new("TextButton")
-    startButton.Size = UDim2.new(1, -40, 0, 45)
-    startButton.Position = UDim2.new(0, 20, 0, 140)
-    startButton.BackgroundColor3 = Color3.fromRGB(40, 50, 115)
-    startButton.Text = ""
-    startButton.ZIndex = 2
-    startButton.Parent = mainFrame
+    local startButton, loadingFill, startText = makeBuyButton(mainFrame, 150, 2)
 
-    local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, 8)
-    buttonCorner.Parent = startButton
-
-    local loadingFill = Instance.new("Frame")
-    loadingFill.Size = UDim2.new(0, 0, 1, 0)
-    loadingFill.BackgroundColor3 = Color3.fromRGB(0, 110, 255)
-    loadingFill.BorderSizePixel = 0
-    loadingFill.ZIndex = 2
-    loadingFill.Parent = startButton
-
-    local fillCorner = Instance.new("UICorner")
-    fillCorner.CornerRadius = UDim.new(0, 8)
-    fillCorner.Parent = loadingFill
-
-    local startText = Instance.new("TextLabel")
-    startText.Size = UDim2.new(1, 0, 1, 0)
-    startText.BackgroundTransparency = 1
-    startText.Text = "Buy"
-    startText.TextColor3 = Color3.fromRGB(180, 180, 180)
-    startText.TextSize = 18
-    startText.Font = Enum.Font.GothamBold
-    startText.ZIndex = 3
-    startText.Parent = startButton
-
-    -- Success frame
-    local successFrame = Instance.new("Frame")
-    successFrame.Size = UDim2.new(0, 0, 0, 0)
-    successFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    successFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    successFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    successFrame.ClipsDescendants = true
+    -- ==========================================
+    -- SUCCESS / OK UI
+    -- ==========================================
+    local successFrame = makeFrame(screenGui, SW, SH, 2)
     successFrame.Visible = false
-    successFrame.ZIndex = 2
-    successFrame.Parent = screenGui
 
-    local successCorner = Instance.new("UICorner")
-    successCorner.CornerRadius = UDim.new(0, 12)
-    successCorner.Parent = successFrame
+    makeLabel(successFrame, "Purchase completed",
+        UDim2.new(1, -60, 0, 26), UDim2.new(0, 24, 0, 18),
+        18, Enum.Font.GothamBold, Color3.fromRGB(255,255,255),
+        Enum.TextXAlignment.Left, 2)
 
-    local successTitle = Instance.new("TextLabel")
-    successTitle.Size = UDim2.new(1, -40, 0, 40)
-    successTitle.Position = UDim2.new(0, 20, 0, 5)
-    successTitle.BackgroundTransparency = 1
-    successTitle.Text = "Purchase completed"
-    successTitle.TextColor3 = Color3.fromRGB(255, 255, 255)
-    successTitle.TextSize = 16
-    successTitle.Font = Enum.Font.GothamBold
-    successTitle.TextXAlignment = Enum.TextXAlignment.Left
-    successTitle.ZIndex = 2
-    successTitle.Parent = successFrame
+    local successCloseButton = makeCloseBtn(successFrame, 2)
 
-    local successCloseButton = Instance.new("TextButton")
-    successCloseButton.Size = UDim2.new(0, 30, 0, 30)
-    successCloseButton.Position = UDim2.new(1, -40, 0, 10)
-    successCloseButton.BackgroundTransparency = 1
-    successCloseButton.Text = "X"
-    successCloseButton.TextColor3 = Color3.fromRGB(200, 200, 200)
-    successCloseButton.TextSize = 16
-    successCloseButton.Font = Enum.Font.GothamBold
-    successCloseButton.ZIndex = 2
-    successCloseButton.Parent = successFrame
 
+    -- Check circle
     local checkCircle = Instance.new("Frame")
-    checkCircle.Size = UDim2.new(0, 50, 0, 50)
-    checkCircle.Position = UDim2.new(0.5, -25, 0, 45)
+    checkCircle.Size = UDim2.new(0, 54, 0, 54)
+    checkCircle.Position = UDim2.new(0.5, -27, 0, 68)
     checkCircle.BackgroundTransparency = 1
-    checkCircle.ZIndex = 2
-    checkCircle.Parent = successFrame
-
-    local circleCorner = Instance.new("UICorner")
-    circleCorner.CornerRadius = UDim.new(0.5, 0)
-    circleCorner.Parent = checkCircle
-
-    local circleStroke = Instance.new("UIStroke")
-    circleStroke.Color = Color3.fromRGB(255, 255, 255)
-    circleStroke.Thickness = 2
-    circleStroke.Parent = checkCircle
+    checkCircle.ZIndex = 2; checkCircle.Parent = successFrame
+    local cc = Instance.new("UICorner"); cc.CornerRadius = UDim.new(0.5,0); cc.Parent = checkCircle
+    local cs = Instance.new("UIStroke"); cs.Color = Color3.fromRGB(255,255,255); cs.Thickness = 2; cs.Parent = checkCircle
 
     local checkMark = Instance.new("TextLabel")
-    checkMark.Size = UDim2.new(1, 0, 1, 0)
+    checkMark.Size = UDim2.new(1,0,1,0)
     checkMark.BackgroundTransparency = 1
     checkMark.Text = "✓"
-    checkMark.TextColor3 = Color3.fromRGB(255, 255, 255)
-    checkMark.TextSize = 30
-    checkMark.Font = Enum.Font.GothamBold
-    checkMark.ZIndex = 2
-    checkMark.Parent = checkCircle
+    checkMark.TextColor3 = Color3.fromRGB(255,255,255)
+    checkMark.TextSize = 32; checkMark.Font = Enum.Font.GothamBold
+    checkMark.ZIndex = 3; checkMark.Parent = checkCircle
 
-    local successDesc = Instance.new("TextLabel")
-    successDesc.Size = UDim2.new(1, -40, 0, 20)
-    successDesc.Position = UDim2.new(0, 20, 0, 110)
-    successDesc.BackgroundTransparency = 1
-    successDesc.Text = "You have successfully bought [GIFT] Admin Commands."
-    successDesc.TextColor3 = Color3.fromRGB(200, 200, 200)
-    successDesc.TextSize = 14
-    successDesc.Font = Enum.Font.Gotham
-    successDesc.ZIndex = 2
-    successDesc.Parent = successFrame
+    makeLabel(successFrame, successDesc,
+        UDim2.new(1, -48, 0, 34), UDim2.new(0, 24, 0, 132),
+        14, Enum.Font.Gotham, Color3.fromRGB(180,180,190),
+        Enum.TextXAlignment.Center, 2).TextWrapped = true
 
+    -- OK button (same style as Buy)
     local okButton = Instance.new("TextButton")
-    okButton.Size = UDim2.new(1, -40, 0, 40)
-    okButton.Position = UDim2.new(0, 20, 0, 140)
-    okButton.BackgroundColor3 = Color3.fromRGB(0, 110, 255)
+    okButton.Size = UDim2.new(1, -48, 0, 50)
+    okButton.Position = UDim2.new(0, 24, 0, 176)
+    okButton.BackgroundColor3 = BLUE
     okButton.Text = "OK"
-    okButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-    okButton.TextSize = 16
-    okButton.Font = Enum.Font.GothamBold
-    okButton.ZIndex = 2
-    okButton.Parent = successFrame
+    okButton.TextColor3 = Color3.fromRGB(255,255,255)
+    okButton.TextSize = 18; okButton.Font = Enum.Font.GothamBold
+    okButton.ZIndex = 2; okButton.Parent = successFrame
+    local okC = Instance.new("UICorner"); okC.CornerRadius = UDim.new(0,12); okC.Parent = okButton
 
-    local okCorner = Instance.new("UICorner")
-    okCorner.CornerRadius = UDim.new(0, 8)
-    okCorner.Parent = okButton
-
+    -- Bottom notification
     local bottomNotification = Instance.new("TextLabel")
     bottomNotification.Size = UDim2.new(0, 0, 0, 0)
     bottomNotification.Position = UDim2.new(0.5, 0, 0.85, 0)
     bottomNotification.AnchorPoint = Vector2.new(0.5, 0.5)
     bottomNotification.BackgroundTransparency = 1
-    bottomNotification.Text = "You gifted Admin Commands to " .. targetUser .. "!"
-    bottomNotification.TextColor3 = Color3.fromRGB(150, 255, 120)
-    bottomNotification.TextSize = 24
-    bottomNotification.Font = Enum.Font.GothamBlack
+    bottomNotification.Text = notifText
+    bottomNotification.TextColor3 = Color3.fromRGB(85, 255, 0)
+    bottomNotification.TextSize = 16
+    bottomNotification.Font = Enum.Font.GothamBold
     bottomNotification.Visible = false
     bottomNotification.ZIndex = 0
     bottomNotification.Parent = screenGui
 
     local textStroke = Instance.new("UIStroke")
     textStroke.Color = Color3.fromRGB(0, 0, 0)
-    textStroke.Thickness = 2.5
+    textStroke.Thickness = 1
     textStroke.Parent = bottomNotification
 
     -- ==========================================
@@ -663,45 +824,34 @@ local function triggerCustomStartUI(targetUser)
         end
     end
 
-    local mainPopTween = TweenService:Create(mainFrame, popTweenInfo, {Size = UDim2.new(0, 420, 0, 210)})
-    mainPopTween:Play()
+    TweenService:Create(mainFrame, popTweenInfo, {Size = UDim2.new(0, W, 0, 215)}):Play()
 
-    local fillTweenInfo = TweenInfo.new(2, Enum.EasingStyle.Linear)
-    local loadTween = TweenService:Create(loadingFill, fillTweenInfo, {Size = UDim2.new(1, 0, 1, 0)})
-
+    local loadTween = TweenService:Create(loadingFill, TweenInfo.new(2, Enum.EasingStyle.Linear), {Size = UDim2.new(1, 0, 1, 0)})
     loadTween.Completed:Connect(function()
         isClickable = true
         startText.TextColor3 = Color3.fromRGB(255, 255, 255)
     end)
-
     task.wait(0.5)
     loadTween:Play()
 
     startButton.MouseButton1Click:Connect(function()
         if not isClickable then return end
-        isClickable = false -- Prevent double-click
+        isClickable = false
 
-        -- Step 1: Hide the fill so the dark navy button background shows solid
         loadingFill.Visible = false
         startText.TextColor3 = Color3.fromRGB(255, 255, 255)
-
-        -- Step 2: Short delay like the real Roblox prompt
         task.wait(0.75)
 
-        -- Step 3: Deduct balance and transition to success UI
         currentBalance = currentBalance - 7499
         balanceInput.Text = tostring(currentBalance)
+        saveSettings(currentBalance, toggleKeybind, startMinimized)
 
         mainFrame.Visible = false
-
         successFrame.Visible = true
         bottomNotification.Visible = true
 
-        local successPopTween = TweenService:Create(successFrame, popTweenInfo, {Size = UDim2.new(0, 400, 0, 200)})
-        successPopTween:Play()
-
-        local textPopTween = TweenService:Create(bottomNotification, popTweenInfo, {Size = UDim2.new(1, 0, 0, 50)})
-        textPopTween:Play()
+        TweenService:Create(successFrame, popTweenInfo, {Size = UDim2.new(0, SW, 0, SH)}):Play()
+        TweenService:Create(bottomNotification, popTweenInfo, {Size = UDim2.new(1, 0, 0, 50)}):Play()
 
         print("Executing Admin Commands...")
 
@@ -710,11 +860,8 @@ local function triggerCustomStartUI(targetUser)
             local fadeOutInfo = TweenInfo.new(1, Enum.EasingStyle.Linear)
             local fadeText = TweenService:Create(bottomNotification, fadeOutInfo, {TextTransparency = 1})
             local fadeStroke = TweenService:Create(textStroke, fadeOutInfo, {Transparency = 1})
-
-            fadeText:Play()
-            fadeStroke:Play()
+            fadeText:Play(); fadeStroke:Play()
             fadeText.Completed:Wait()
-
             isNotificationFaded = true
             checkCleanup()
         end)
